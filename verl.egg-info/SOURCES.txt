@@ -55,6 +55,8 @@ setup.py
 ./verl/experimental/__init__.py
 ./verl/experimental/agent_loop/__init__.py
 ./verl/experimental/agent_loop/agent_loop.py
+./verl/experimental/agent_loop/search_r1_text_loop.py
+./verl/experimental/agent_loop/search_r1_text_utils.py
 ./verl/experimental/agent_loop/single_turn_agent_loop.py
 ./verl/experimental/agent_loop/tool_agent_loop.py
 ./verl/experimental/agent_loop/tool_parser.py
@@ -429,6 +431,8 @@ verl.egg-info/top_level.txt
 verl/experimental/__init__.py
 verl/experimental/agent_loop/__init__.py
 verl/experimental/agent_loop/agent_loop.py
+verl/experimental/agent_loop/search_r1_text_loop.py
+verl/experimental/agent_loop/search_r1_text_utils.py
 verl/experimental/agent_loop/single_turn_agent_loop.py
 verl/experimental/agent_loop/tool_agent_loop.py
 verl/experimental/agent_loop/tool_parser.py

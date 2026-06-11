@@ -3,49 +3,49 @@ set -x
 
 ulimit -n 65535
 
-export CUDA_VISIBLE_DEVICES=${CUDA_VISIBLE_DEVICES:-0,1,2,3,4,5,6,7}
+export CUDA_VISIBLE_DEVICES=${CUDA_VISIBLE_DEVICES:-4,5}
 export VLLM_USE_V1=${VLLM_USE_V1:-1}
 export VLLM_ATTENTION_BACKEND=${VLLM_ATTENTION_BACKEND:-XFORMERS}
 
-search_train=${SEARCH_TRAIN:-<Your_SearchR1_Train_Parquet>}
-search_eval=${SEARCH_EVAL:-<Your_SearchR1_Eval_Parquet>}
+search_train=${SEARCH_TRAIN:-/data/home/wencanning/workplace/Agentic-RAG/SearchR1-OPD/data/nq_hotpotqa_train/train.parquet}
+search_eval=${SEARCH_EVAL:-/data/home/wencanning/workplace/Agentic-RAG/SearchR1-OPD/data/nq_hotpotqa_train/eval.parquet}
 
-student_model_path=${STUDENT_MODEL_PATH:-<Your_Student_Model_Path>}
-teacher_model_path=${TEACHER_MODEL_PATH:-<Your_SearchR1_Teacher_Model_Path>}
+student_model_path=${STUDENT_MODEL_PATH:-/data/home/wencanning/models/SearchR1-nq_hotpotqa_train-qwen2.5-3b-it-em-grpo-v0.3}
+teacher_model_path=${TEACHER_MODEL_PATH:-/data/home/wencanning/models/Qwen2.5-0.5B-Ins}
 
 tool_config_path=${TOOL_CONFIG_PATH:-examples/sglang_multiturn/config/tool_config/search_tool_config.yaml}
 
 project_name=${PROJECT_NAME:-Search-R1}
-experiment_name=${EXPERIMENT_NAME:-search_r1_opd}
+experiment_name=${EXPERIMENT_NAME:-search_r1_test_opd}
 default_local_dir=${DEFAULT_LOCAL_DIR:-./checkpoint/$experiment_name}
 
 train_files="['$search_train']"
 test_files="['$search_eval']"
 
-max_turns=2
+max_turns=4
 max_prompt_length=4096
-max_response_length=3000
+max_response_length=4096
 actor_lr=1e-6
 lr_warmup_steps_ratio=${LR_WARMUP_STEPS_RATIO:-0.285}
 
-train_batch_size=512
+train_batch_size=4
 val_batch_size=256
-ppo_mini_batch_size=256
-ppo_micro_batch_size_per_gpu=8
-n_resp_per_prompt=5
-n_resp_per_prompt_val=5
+ppo_mini_batch_size=4
+ppo_micro_batch_size_per_gpu=1
+n_resp_per_prompt=4
+n_resp_per_prompt_val=4
 
 token_kl_gamma=${TOKEN_KL_GAMMA:-1.0}
 token_kl_beta_min=${TOKEN_KL_BETA_MIN:-0.0}
 token_kl_beta_max=${TOKEN_KL_BETA_MAX:-0.05}
 
-rollout_log_prob_micro_batch_size_per_gpu=${ROLLOUT_LOG_PROB_MICRO_BATCH_SIZE_PER_GPU:-8}
-ref_log_prob_micro_batch_size_per_gpu=${REF_LOG_PROB_MICRO_BATCH_SIZE_PER_GPU:-8}
+rollout_log_prob_micro_batch_size_per_gpu=${ROLLOUT_LOG_PROB_MICRO_BATCH_SIZE_PER_GPU:-2}
+ref_log_prob_micro_batch_size_per_gpu=${REF_LOG_PROB_MICRO_BATCH_SIZE_PER_GPU:-2}
 rollout_gpu_memory_utilization=${ROLLOUT_GPU_MEMORY_UTILIZATION:-0.5}
 
 infer_tp=1
-total_epochs=${TOTAL_EPOCHS:-15}
-total_training_steps=${TOTAL_TRAINING_STEPS:-1005}
+total_epochs=${TOTAL_EPOCHS:-1}
+total_training_steps=${TOTAL_TRAINING_STEPS:-2}
 
 python3 -m verl.trainer.main_ppo \
     algorithm.adv_estimator=grpo \
@@ -94,11 +94,11 @@ python3 -m verl.trainer.main_ppo \
     trainer.logger='["console","wandb"]' \
     trainer.project_name=$project_name \
     trainer.experiment_name=$experiment_name \
-    trainer.n_gpus_per_node=8 \
+    trainer.n_gpus_per_node=2 \
     trainer.nnodes=1 \
     trainer.val_before_train=True \
     trainer.save_freq=100 \
-    trainer.test_freq=50 \
+    trainer.test_freq=100 \
     trainer.default_local_dir=$default_local_dir \
     trainer.total_epochs=$total_epochs \
     trainer.total_training_steps=$total_training_steps "$@"
