@@ -40,6 +40,15 @@ DEFAULT_USER_CONTENT_PREFIX = (
     "<answer> and </answer>, without detailed illustrations. For example, "
     "<answer> Beijing </answer>. Question: "
 )
+SEARCH_R1_CONTENT_PREFIX = (
+    "Answer the given question. You must conduct reasoning inside <think> and </think> "
+    "first every time you get new information. After reasoning, if you find you lack "
+    "some knowledge, you can call a search engine by <search> query </search> and it "
+    "will return the top searched results between <information> and </information>. "
+    "You can search as many times as your want. If you find no further external knowledge "
+    "needed, you can directly provide the answer inside <answer> and </answer>, without "
+    "detailed illustrations. For example, <answer> Beijing </answer>. Question: "
+)
 
 
 def process_single_row(row, current_split_name, row_index):
@@ -91,6 +100,7 @@ def process_single_row(row, current_split_name, row_index):
             "data_source": data_source_tagged,
             "prompt": prompt,
             "ability": row.get("ability"),
+            "agent_name": "search_r1_text_agent" if args.prefix_type == "search_r1" else "tool_agent",
             "reward_model": reward_model_data,
             "extra_info": extra_info,
             "metadata": row.get("metadata"),
@@ -167,12 +177,18 @@ if __name__ == "__main__":
         default="~/data/searchR1_processed_direct",
         help="Local directory to save the processed Parquet files.",
     )
+    parser.add_argument(
+        "--prefix_type",
+        default="search_r1",
+        choices=["search_r1", "default"],
+        help="Prompt prefix style to write into the processed parquet files.",
+    )
     parser.add_argument("--hdfs_dir", default=None, help="Optional HDFS directory to copy the Parquet files to.")
 
     args = parser.parse_args()
 
     # System and user content configuration
     system_content = DEFAULT_SYSTEM_CONTENT
-    user_content_prefix = DEFAULT_USER_CONTENT_PREFIX
+    user_content_prefix = SEARCH_R1_CONTENT_PREFIX if args.prefix_type == "search_r1" else DEFAULT_USER_CONTENT_PREFIX
 
     main()

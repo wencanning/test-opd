@@ -12,11 +12,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from .agent_loop import AgentLoopBase, AgentLoopManager
-from .search_r1_text_loop import SearchR1TextAgentLoop
-from .single_turn_agent_loop import SingleTurnAgentLoop
-from .tool_agent_loop import ToolAgentLoop
+from verl.utils.reward_score import search_r1_like_qa_em
 
-_ = [SingleTurnAgentLoop, ToolAgentLoop, SearchR1TextAgentLoop]
 
-__all__ = ["AgentLoopBase", "AgentLoopManager"]
+def compute_score(data_source, solution_str, ground_truth, extra_info):
+    del data_source, extra_info
+    return search_r1_like_qa_em.compute_score(solution_str=solution_str, ground_truth=ground_truth)
