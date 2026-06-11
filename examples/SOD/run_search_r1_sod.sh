@@ -21,7 +21,9 @@ test_files="['$search_eval']"
 
 max_turns=8
 max_prompt_length=4096
-max_response_length=8192
+max_response_length=${MAX_RESPONSE_LENGTH:-8192}
+max_obs_length=${MAX_OBS_LENGTH:-500}
+effective_response_length=$((max_response_length + max_obs_length * max_turns))
 actor_lr=1e-6
 
 train_batch_size=64
@@ -45,7 +47,9 @@ python3 -m verl.trainer.main_ppo \
     data.return_raw_chat=True \
     data.train_batch_size=$train_batch_size \
     data.max_prompt_length=$max_prompt_length \
-    data.max_response_length=$max_response_length \
+    data.max_response_length=$effective_response_length \
+    +data.max_model_response_length=$max_response_length \
+    +data.max_obs_length=$max_obs_length \
     data.filter_overlong_prompts=True \
     data.truncation=error \
     custom_reward_function.path=recipe/search_r1/reward.py \
@@ -56,10 +60,10 @@ python3 -m verl.trainer.main_ppo \
     actor_rollout_ref.actor.optim.lr=$actor_lr \
     actor_rollout_ref.actor.use_dynamic_bsz=True \
     actor_rollout_ref.actor.ppo_mini_batch_size=$ppo_mini_batch_size \
-    actor_rollout_ref.actor.ppo_max_token_len_per_gpu=$(((max_prompt_length + max_response_length) * 1)) \
+    actor_rollout_ref.actor.ppo_max_token_len_per_gpu=$(((max_prompt_length + effective_response_length) * 1)) \
     actor_rollout_ref.actor.ulysses_sequence_parallel_size=$train_sp \
     +actor_rollout_ref.ref.model.path=$teacher_model_path \
-    actor_rollout_ref.ref.log_prob_max_token_len_per_gpu=$(((max_prompt_length + max_response_length) * 4)) \
+    actor_rollout_ref.ref.log_prob_max_token_len_per_gpu=$(((max_prompt_length + effective_response_length) * 4)) \
     actor_rollout_ref.ref.fsdp_config.param_offload=True \
     actor_rollout_ref.rollout.name=vllm \
     actor_rollout_ref.rollout.mode=async \

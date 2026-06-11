@@ -71,10 +71,12 @@ def test_search_r1_text_utils_truncate_and_extract():
 @pytest.mark.asyncio
 async def test_search_r1_text_loop_appends_information_with_mask(monkeypatch):
     from verl.experimental.agent_loop.search_r1_text_loop import SearchR1TextAgentLoop
+    from verl.experimental.agent_loop.search_r1_text_utils import format_information_observation
 
     SearchR1TextAgentLoop._class_initialized = False
-    observation = "\n\n<information>Doc 1 (Title: Penicillin)\nAlexander Fleming discovered penicillin.</information>\n\n"
-    retriever = FakeRetriever(observation)
+    raw_observation = "Doc 1 (Title: Penicillin)\nAlexander Fleming discovered penicillin."
+    observation = format_information_observation(raw_observation)
+    retriever = FakeRetriever(raw_observation)
 
     monkeypatch.setattr(
         SearchR1TextAgentLoop,
@@ -133,3 +135,131 @@ async def test_search_r1_text_loop_appends_information_with_mask(monkeypatch):
     assert result.num_turns == 4
     assert result.extra_fields["extra_info"]["num_tool_calls"] == 1
     assert result.metrics == AgentLoopMetrics(generate_sequences=0.0, tool_calls=0.0)
+
+
+@pytest.mark.asyncio
+async def test_search_r1_text_loop_truncates_observation_by_max_obs_length(monkeypatch):
+    from verl.experimental.agent_loop.search_r1_text_loop import SearchR1TextAgentLoop
+    from verl.experimental.agent_loop.search_r1_text_utils import format_information_observation
+
+    SearchR1TextAgentLoop._class_initialized = False
+    raw_observation = "ABCDEFGHIJ"
+    max_obs_length = 8
+    expected_observation = format_information_observation(raw_observation)
+    expected_observation_ids = FakeTokenizer().encode(expected_observation, add_special_tokens=False)[:max_obs_length]
+    retriever = FakeRetriever(raw_observation)
+
+    monkeypatch.setattr(
+        SearchR1TextAgentLoop,
+        "_build_retriever_from_config",
+        classmethod(lambda cls, config: retriever),
+    )
+
+    config = OmegaConf.create(
+        {
+            "data": {"apply_chat_template_kwargs": {}, "max_obs_length": max_obs_length},
+            "actor_rollout_ref": {
+                "rollout": {
+                    "prompt_length": 512,
+                    "response_length": 512,
+                    "multi_turn": {
+                        "max_assistant_turns": 4,
+                        "tool_config_path": None,
+                    },
+                }
+            },
+        }
+    )
+
+    tokenizer = FakeTokenizer()
+    first = "<search>q</search>"
+    second = "<answer>done</answer>"
+    server_manager = FakeServerManager(
+        [
+            TokenOutput(token_ids=tokenizer.encode(first), log_probs=[-0.1] * len(first)),
+            TokenOutput(token_ids=tokenizer.encode(second), log_probs=[-0.2] * len(second)),
+        ]
+    )
+    loop = SearchR1TextAgentLoop(
+        trainer_config=types.SimpleNamespace(config=config),
+        server_manager=server_manager,
+        tokenizer=tokenizer,
+        processor=None,
+    )
+
+    result = await loop.run(
+        {"temperature": 1.0, "logprobs": 1},
+        raw_prompt=[{"role": "user", "content": "test"}],
+    )
+
+    first_len = len(tokenizer.encode(first))
+    second_len = len(tokenizer.encode(second))
+    obs_len = len(expected_observation_ids)
+    expected_observation_text = tokenizer.decode(expected_observation_ids)
+
+    decoded_response = tokenizer.decode(result.response_ids)
+    assert expected_observation_text in decoded_response
+    assert result.response_mask == ([1] * first_len) + ([0] * obs_len) + ([1] * second_len)
+
+
+@pytest.mark.asyncio
+async def test_search_r1_text_loop_excludes_observation_from_generation_budget(monkeypatch):
+    from verl.experimental.agent_loop.search_r1_text_loop import SearchR1TextAgentLoop
+    from verl.experimental.agent_loop.search_r1_text_utils import format_information_observation
+
+    SearchR1TextAgentLoop._class_initialized = False
+    raw_observation = "Doc"
+    observation = format_information_observation(raw_observation)
+    retriever = FakeRetriever(raw_observation)
+
+    monkeypatch.setattr(
+        SearchR1TextAgentLoop,
+        "_build_retriever_from_config",
+        classmethod(lambda cls, config: retriever),
+    )
+
+    first = "<search>q</search>"
+    second = "<answer>done</answer>"
+    generated_budget = len(FakeTokenizer().encode(first)) + len(FakeTokenizer().encode(second))
+    config = OmegaConf.create(
+        {
+            "data": {
+                "apply_chat_template_kwargs": {},
+                "max_obs_length": 64,
+                "max_model_response_length": generated_budget,
+            },
+            "actor_rollout_ref": {
+                "rollout": {
+                    "prompt_length": 512,
+                    "response_length": generated_budget + 64,
+                    "multi_turn": {
+                        "max_assistant_turns": 4,
+                        "tool_config_path": None,
+                    },
+                }
+            },
+        }
+    )
+
+    tokenizer = FakeTokenizer()
+    server_manager = FakeServerManager(
+        [
+            TokenOutput(token_ids=tokenizer.encode(first), log_probs=[-0.1] * len(first)),
+            TokenOutput(token_ids=tokenizer.encode(second), log_probs=[-0.2] * len(second)),
+        ]
+    )
+    loop = SearchR1TextAgentLoop(
+        trainer_config=types.SimpleNamespace(config=config),
+        server_manager=server_manager,
+        tokenizer=tokenizer,
+        processor=None,
+    )
+
+    result = await loop.run(
+        {"temperature": 1.0, "logprobs": 1},
+        raw_prompt=[{"role": "user", "content": "test"}],
+    )
+
+    decoded_response = tokenizer.decode(result.response_ids)
+    assert observation in decoded_response
+    assert "<answer>done</answer>" in decoded_response

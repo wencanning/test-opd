@@ -48,6 +48,8 @@ class SearchR1TextAgentLoop(AgentLoopBase):
         cls.apply_chat_template_kwargs = config.data.get("apply_chat_template_kwargs", {})
         cls.prompt_length = config.actor_rollout_ref.rollout.prompt_length
         cls.response_length = config.actor_rollout_ref.rollout.response_length
+        cls.model_response_length = int(config.data.get("max_model_response_length", cls.response_length) or 0)
+        cls.max_obs_length = int(config.data.get("max_obs_length", 0) or 0)
         cls.max_assistant_turns = config.actor_rollout_ref.rollout.multi_turn.max_assistant_turns or 8
         cls.retriever = cls._build_retriever_from_config(config)
 
@@ -101,8 +103,13 @@ class SearchR1TextAgentLoop(AgentLoopBase):
 
         assistant_turns = 0
         successful_searches = 0
+        generated_token_count = 0
 
-        while assistant_turns < self.max_assistant_turns and len(response_ids) < self.response_length:
+        while (
+            assistant_turns < self.max_assistant_turns
+            and generated_token_count < self.model_response_length
+            and len(response_ids) < self.response_length
+        ):
             output = await self.server_manager.generate(
                 request_id=request_id,
                 prompt_ids=running_prompt_ids,
@@ -112,17 +119,24 @@ class SearchR1TextAgentLoop(AgentLoopBase):
             truncated_text = truncate_generation_at_action(generated_text)
             truncated_ids = self.tokenizer.encode(truncated_text, add_special_tokens=False)
             truncated_logprobs = output.log_probs[: len(truncated_ids)] if output.log_probs else None
+            remaining_generated = self.model_response_length - generated_token_count
+            if remaining_generated <= 0:
+                break
+            truncated_ids = truncated_ids[:remaining_generated]
+            truncated_logprobs = truncated_logprobs[:remaining_generated] if truncated_logprobs else None
 
             running_prompt_ids.extend(truncated_ids)
             response_ids.extend(truncated_ids)
             response_mask.extend([1] * len(truncated_ids))
             if response_logprobs is not None:
                 response_logprobs.extend(truncated_logprobs or [0.0] * len(truncated_ids))
+            generated_token_count += len(truncated_ids)
 
             assistant_turns += 1
-            if len(response_ids) >= self.response_length:
+            if generated_token_count >= self.model_response_length or len(response_ids) >= self.response_length:
                 break
 
+            truncated_text = self.tokenizer.decode(truncated_ids, skip_special_tokens=True)
             if extract_answer_text(truncated_text) is not None:
                 break
 
@@ -132,6 +146,8 @@ class SearchR1TextAgentLoop(AgentLoopBase):
 
             observation_text = await self._search(search_query)
             observation_ids = self.tokenizer.encode(observation_text, add_special_tokens=False)
+            if self.max_obs_length > 0:
+                observation_ids = observation_ids[: self.max_obs_length]
             remaining = self.response_length - len(response_ids)
             if remaining <= 0:
                 break

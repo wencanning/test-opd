@@ -23,17 +23,19 @@ train_files="['$search_train']"
 test_files="['$search_eval']"
 
 max_turns=4
-max_prompt_length=4096
-max_response_length=4096
+max_prompt_length=1024
+max_response_length=${MAX_RESPONSE_LENGTH:-2048}
+max_obs_length=${MAX_OBS_LENGTH:-500}
+effective_response_length=$((max_response_length + max_obs_length * max_turns))
 actor_lr=1e-6
 lr_warmup_steps_ratio=${LR_WARMUP_STEPS_RATIO:-0.285}
 
-train_batch_size=4
-val_batch_size=256
-ppo_mini_batch_size=4
-ppo_micro_batch_size_per_gpu=1
-n_resp_per_prompt=4
-n_resp_per_prompt_val=4
+train_batch_size=${TRAIN_BATCH_SIZE:-4}
+val_batch_size=${VAL_BATCH_SIZE:-256}
+ppo_mini_batch_size=${PPO_MINI_BATCH_SIZE:-4}
+ppo_micro_batch_size_per_gpu=${PPO_MICRO_BATCH_SIZE_PER_GPU:-1}
+n_resp_per_prompt=${N_RESP_PER_PROMPT:-4}
+n_resp_per_prompt_val=${N_RESP_PER_PROMPT_VAL:-4}
 
 token_kl_gamma=${TOKEN_KL_GAMMA:-1.0}
 token_kl_beta_min=${TOKEN_KL_BETA_MIN:-0.0}
@@ -46,6 +48,7 @@ rollout_gpu_memory_utilization=${ROLLOUT_GPU_MEMORY_UTILIZATION:-0.5}
 infer_tp=1
 total_epochs=${TOTAL_EPOCHS:-1}
 total_training_steps=${TOTAL_TRAINING_STEPS:-2}
+n_gpus_per_node=${N_GPUS_PER_NODE:-2}
 
 python3 -m verl.trainer.main_ppo \
     algorithm.adv_estimator=grpo \
@@ -61,7 +64,9 @@ python3 -m verl.trainer.main_ppo \
     data.train_batch_size=$train_batch_size \
     data.val_batch_size=$val_batch_size \
     data.max_prompt_length=$max_prompt_length \
-    data.max_response_length=$max_response_length \
+    data.max_response_length=$effective_response_length \
+    +data.max_model_response_length=$max_response_length \
+    +data.max_obs_length=$max_obs_length \
     data.filter_overlong_prompts=True \
     data.truncation=error \
     custom_reward_function.path=recipe/search_r1/reward.py \
@@ -91,14 +96,15 @@ python3 -m verl.trainer.main_ppo \
     actor_rollout_ref.rollout.val_kwargs.n=$n_resp_per_prompt_val \
     reward_model.reward_manager=naive \
     trainer.critic_warmup=0 \
-    trainer.logger='["console","wandb"]' \
+    trainer.logger='["console"]' \
     trainer.project_name=$project_name \
     trainer.experiment_name=$experiment_name \
-    trainer.n_gpus_per_node=2 \
+    trainer.n_gpus_per_node=$n_gpus_per_node \
     trainer.nnodes=1 \
     trainer.val_before_train=True \
     trainer.save_freq=100 \
     trainer.test_freq=100 \
     trainer.default_local_dir=$default_local_dir \
     trainer.total_epochs=$total_epochs \
-    trainer.total_training_steps=$total_training_steps "$@"
+    trainer.total_training_steps=$total_training_steps "$@" \
+    trainer.rollout_data_dir=./checkpoint/$experiment_name/rollout_generations
