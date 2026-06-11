@@ -14,6 +14,7 @@
 
 from .rl_dataset import RLHFDataset
 from .rm_dataset import RMDataset
+from .search_r1_sft_dataset import SearchR1SFTDataset
 from .sft_dataset import SFTDataset
 
-__all__ = ["RLHFDataset", "RMDataset", "SFTDataset"]
+__all__ = ["RLHFDataset", "RMDataset", "SFTDataset", "SearchR1SFTDataset"]

@@ -47,6 +47,7 @@ import verl.utils.hdfs_io as hdfs_io
 from verl.utils.checkpoint.checkpoint_manager import find_latest_ckpt_path, get_checkpoint_tracker_filename
 from verl.utils.checkpoint.fsdp_checkpoint_manager import FSDPCheckpointManager
 from verl.utils.dataset import SFTDataset
+from verl.utils.dataset.search_r1_sft_dataset import SearchR1SFTDataset
 from verl.utils.dataset.multiturn_sft_dataset import MultiTurnSFTDataset
 from verl.utils.device import get_device_id, get_device_name, is_cuda_available, is_npu_available
 from verl.utils.distributed import destroy_global_process_group, initialize_global_process_group
@@ -826,10 +827,14 @@ def create_sft_dataset(data_paths, data_config, tokenizer):
     """Create a dataset."""
     # build dataset
     # First check if a custom dataset class is specified
-    if data_config.custom_cls.get("path", None):
+    custom_cls_cfg = data_config.get("custom_cls", {})
+    if custom_cls_cfg.get("path", None):
         from verl.utils.import_utils import load_extern_type
 
-        dataset_cls = load_extern_type(data_config.custom_cls.path, data_config.custom_cls.name)
+        dataset_cls = load_extern_type(custom_cls_cfg.path, custom_cls_cfg.name)
+    # Then check if Search-R1 masked single-turn SFT should be used
+    elif data_config.get("search_r1_masked", {}).get("enable", False):
+        dataset_cls = SearchR1SFTDataset
     # Then check if multi-turn dataset should be used
     elif data_config.get("multiturn", {}).get("enable", False):
         dataset_cls = MultiTurnSFTDataset
