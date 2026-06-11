@@ -5,19 +5,20 @@ ulimit -n 65535
 
 export CUDA_VISIBLE_DEVICES=${CUDA_VISIBLE_DEVICES:-4,5}
 export VLLM_USE_V1=${VLLM_USE_V1:-1}
-export VLLM_ATTENTION_BACKEND=${VLLM_ATTENTION_BACKEND:-XFORMERS}
+export VLLM_ATTENTION_BACKEND=${VLLM_ATTENTION_BACKEND:-FLASH_ATTN}
+export HYDRA_FULL_ERROR=1
 
-search_train=${SEARCH_TRAIN:-/data/home/wencanning/workplace/Agentic-RAG/SearchR1-OPD/data/nq_hotpotqa_train/train.parquet}
-search_eval=${SEARCH_EVAL:-/data/home/wencanning/workplace/Agentic-RAG/SearchR1-OPD/data/nq_hotpotqa_train/eval.parquet}
+search_train=/data/home/wencanning/workplace/Agentic-RAG/SearchR1-OPD/data/nq_hotpotqa_train/train.parquet
+search_eval=/data/home/wencanning/workplace/Agentic-RAG/SearchR1-OPD/data/nq_hotpotqa_train/test.parquet
 
-student_model_path=${STUDENT_MODEL_PATH:-/data/home/wencanning/models/SearchR1-nq_hotpotqa_train-qwen2.5-3b-it-em-grpo-v0.3}
-teacher_model_path=${TEACHER_MODEL_PATH:-/data/home/wencanning/models/Qwen2.5-0.5B-Ins}
+student_model_path=/data/home/wencanning/models/Qwen2.5-0.5B-Ins
+teacher_model_path=/data/home/wencanning/models/SearchR1-nq_hotpotqa_train-qwen2.5-3b-it-em-grpo-v0.3
 
-tool_config_path=${TOOL_CONFIG_PATH:-examples/sglang_multiturn/config/tool_config/search_tool_config.yaml}
+tool_config_path=examples/sglang_multiturn/config/tool_config/search_tool_config.yaml
 
-project_name=${PROJECT_NAME:-Search-R1}
-experiment_name=${EXPERIMENT_NAME:-search_r1_test_opd}
-default_local_dir=${DEFAULT_LOCAL_DIR:-./checkpoint/$experiment_name}
+project_name=Search-R1
+experiment_name=-search_r1_test_opd
+default_local_dir=./checkpoint/$experiment_name
 
 train_files="['$search_train']"
 test_files="['$search_eval']"
@@ -30,25 +31,25 @@ effective_response_length=$((max_response_length + max_obs_length * max_turns))
 actor_lr=1e-6
 lr_warmup_steps_ratio=${LR_WARMUP_STEPS_RATIO:-0.285}
 
-train_batch_size=${TRAIN_BATCH_SIZE:-4}
-val_batch_size=${VAL_BATCH_SIZE:-256}
-ppo_mini_batch_size=${PPO_MINI_BATCH_SIZE:-4}
-ppo_micro_batch_size_per_gpu=${PPO_MICRO_BATCH_SIZE_PER_GPU:-1}
-n_resp_per_prompt=${N_RESP_PER_PROMPT:-4}
-n_resp_per_prompt_val=${N_RESP_PER_PROMPT_VAL:-4}
+train_batch_size=4
+val_batch_size=256
+ppo_mini_batch_size=4
+ppo_micro_batch_size_per_gpu=1
+n_resp_per_prompt=8
+n_resp_per_prompt_val=1
 
-token_kl_gamma=${TOKEN_KL_GAMMA:-1.0}
-token_kl_beta_min=${TOKEN_KL_BETA_MIN:-0.0}
-token_kl_beta_max=${TOKEN_KL_BETA_MAX:-0.05}
+token_kl_gamma=1.0
+token_kl_beta_min=0.0
+token_kl_beta_max=0.05
 
-rollout_log_prob_micro_batch_size_per_gpu=${ROLLOUT_LOG_PROB_MICRO_BATCH_SIZE_PER_GPU:-2}
-ref_log_prob_micro_batch_size_per_gpu=${REF_LOG_PROB_MICRO_BATCH_SIZE_PER_GPU:-2}
-rollout_gpu_memory_utilization=${ROLLOUT_GPU_MEMORY_UTILIZATION:-0.5}
+rollout_log_prob_micro_batch_size_per_gpu=2
+ref_log_prob_micro_batch_size_per_gpu=2
+rollout_gpu_memory_utilization=0.5
 
 infer_tp=1
-total_epochs=${TOTAL_EPOCHS:-1}
-total_training_steps=${TOTAL_TRAINING_STEPS:-2}
-n_gpus_per_node=${N_GPUS_PER_NODE:-2}
+total_epochs=1
+total_training_steps=2
+n_gpus_per_node=2
 
 python3 -m verl.trainer.main_ppo \
     algorithm.adv_estimator=grpo \
@@ -67,7 +68,7 @@ python3 -m verl.trainer.main_ppo \
     data.max_response_length=$effective_response_length \
     +data.max_model_response_length=$max_response_length \
     +data.max_obs_length=$max_obs_length \
-    data.filter_overlong_prompts=True \
+    data.filter_overlong_prompts=False \
     data.truncation=error \
     custom_reward_function.path=recipe/search_r1/reward.py \
     custom_reward_function.name=compute_score \
@@ -81,7 +82,8 @@ python3 -m verl.trainer.main_ppo \
     +actor_rollout_ref.ref.model.path=$teacher_model_path \
     actor_rollout_ref.rollout.log_prob_micro_batch_size_per_gpu=$rollout_log_prob_micro_batch_size_per_gpu \
     actor_rollout_ref.ref.log_prob_micro_batch_size_per_gpu=$ref_log_prob_micro_batch_size_per_gpu \
-    actor_rollout_ref.ref.fsdp_config.param_offload=True \
+    actor_rollout_ref.ref.fsdp_config.param_offload=true \
+    actor_rollout_ref.actor.fsdp_config.optimizer_offload=true \
     actor_rollout_ref.rollout.name=vllm \
     actor_rollout_ref.rollout.mode=async \
     actor_rollout_ref.rollout.tensor_model_parallel_size=$infer_tp \
@@ -101,7 +103,7 @@ python3 -m verl.trainer.main_ppo \
     trainer.experiment_name=$experiment_name \
     trainer.n_gpus_per_node=$n_gpus_per_node \
     trainer.nnodes=1 \
-    trainer.val_before_train=True \
+    trainer.val_before_train=false \
     trainer.save_freq=100 \
     trainer.test_freq=100 \
     trainer.default_local_dir=$default_local_dir \
